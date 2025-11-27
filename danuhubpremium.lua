@@ -29,9 +29,7 @@ local AutoCatchCooldown = false -- Prevent spam
 
 function AutoCatchController:InstantCatch()
     if not self.Enabled then return end
-    -- Prevent interfering with active fishing loops
-    if FishingActive or UltraFishingActive or BlatantFishingActive then return end
-    -- Prevent rapid fire
+    if FishingActive then return end
     if AutoCatchCooldown then return end
     AutoCatchCooldown = true
     
@@ -144,26 +142,21 @@ end
 local Config = {
     BlatantMode = false, NoAnimation = false, FlyEnabled = false, SpeedEnabled = false, NoclipEnabled = false,
     FlySpeed = 50, WalkSpeed = 50, 
-    ReelDelay = 0.5,       -- Delay setelah cast (server butuh waktu!)
-    FishingDelay = 0.3,    -- Delay antara siklus
-    ChargeTime = 0.3,      -- Waktu charge rod
+    ReelDelay = 0.5,
+    FishingDelay = 0.3,
+    ChargeTime = 0.3,
     MultiCast = false, CastAmount = 3, CastPower = 0.55, CastAngleMin = -0.8, CastAngleMax = 0.8,
     InstantFish = false, AutoSell = false, AutoSellThreshold = 50,
     AutoBuyEventEnabled = false, SelectedEvent = "Wind", AutoBuyCheckInterval = 5,
     AntiAFKEnabled = true, AutoRejoinEnabled = false, AutoRejoinDelay = 5, AntiLagEnabled = false,
-    UltraDelayRecast = 0.3, UltraSpamFinish = 5, UltraCooldownRecast = 0.1,
-    UltraFishingEnabled = false, AutoFavoriteEnabled = false, FavoriteRarity = "Legendary",
-    PerformanceMode = false, BlatantFishingEnabled = false, 
-    BlatantDelayCast = 0.3, BlatantDelayComplete = 0.1,
-    AutoCatchEnabled = false
+    AutoFavoriteEnabled = false, FavoriteRarity = "Legendary",
+    PerformanceMode = false, AutoCatchEnabled = false
 }
 
 local EventList = { "Wind", "Cloudy", "Snow", "Storm", "Radiant", "Shark Hunt" }
 local RarityList = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
 local Stats = { StartTime = 0, FishCaught = 0, TotalSold = 0, FavoriteCount = 0 }
 local FishingActive = false
-local UltraFishingActive = false
-local BlatantFishingActive = false
 
 local AnimationController = { IsDisabled = false, Connection = nil }
 local FlyController = { BodyVelocity = nil, BodyGyro = nil, Connection = nil }
@@ -523,31 +516,7 @@ local function ExecuteFishing()
     if not success then warn("[Normal] Error:", err) end
 end
 
--- ULTRA FISHING: Faster tapi tetap WORKING
-local function ExecuteUltraFishing()
-    local success, err = pcall(function()
-        -- 1. Charge (faster)
-        Net["RF/ChargeFishingRod"]:InvokeServer()
-        task.wait(0.2)
-        
-        -- 2. Cast
-        local angle = Config.CastAngleMin + (math.random() * (Config.CastAngleMax - Config.CastAngleMin))
-        Net["RF/RequestFishingMinigameStarted"]:InvokeServer(angle, Config.CastPower, os.clock())
-        
-        -- 3. Wait (shorter minigame time)
-        task.wait(0.4)
-        
-        -- 4. Complete
-        Net["RE/FishingCompleted"]:FireServer()
-        task.wait(0.05)
-        Net["RE/FishingCompleted"]:FireServer()
-        
-        Stats.FishCaught = Stats.FishCaught + 1
-    end)
-    if not success then warn("[Ultra] Error:", err) end
-end
-
-local function StartBlatantLoop()
+local function StartAutoFishingLoop()
     while Config.BlatantMode do
         FishingActive = true
         ExecuteFishing()
@@ -558,81 +527,7 @@ local function StartBlatantLoop()
         if Config.FishingDelay > 0 then task.wait(Config.FishingDelay) end
         task.wait(0.01)
     end
-    FishingActive = false -- Ensure reset on exit
-end
-
-local function StartUltraFishingLoop()
-    while Config.UltraFishingEnabled do
-        UltraFishingActive = true
-        ExecuteUltraFishing()
-        if Config.AutoSell and Stats.FishCaught > 0 and Stats.FishCaught % Config.AutoSellThreshold == 0 then 
-            pcall(SellAllFish) 
-        end
-        UltraFishingActive = false
-        task.wait(0.01)
-    end
-    UltraFishingActive = false
-end
-
--- BLATANT FISHING: Fast mode yang tetap WORKING
-local function ExecuteBlatantFishing()
-    local success, err = pcall(function()
-        -- 1. Charge (fast)
-        Net["RF/ChargeFishingRod"]:InvokeServer()
-        task.wait(0.15)
-        
-        -- 2. Cast
-        local angle = Config.CastAngleMin + (math.random() * (Config.CastAngleMax - Config.CastAngleMin))
-        Net["RF/RequestFishingMinigameStarted"]:InvokeServer(angle, Config.CastPower, os.clock())
-        
-        -- 3. Wait (shorter)
-        task.wait(0.3)
-        
-        -- 4. Complete
-        Net["RE/FishingCompleted"]:FireServer()
-        task.wait(0.05)
-        Net["RE/FishingCompleted"]:FireServer()
-        
-        Stats.FishCaught = Stats.FishCaught + 1
-    end)
-    if not success then warn("[Blatant] Error:", err) end
-end
-
--- TURBO MODE: Fastest WORKING speed
-local function ExecuteTurboFishing()
-    local success, err = pcall(function()
-        -- 1. Charge (minimal)
-        Net["RF/ChargeFishingRod"]:InvokeServer()
-        task.wait(0.1)
-        
-        -- 2. Cast
-        local angle = Config.CastAngleMin + (math.random() * (Config.CastAngleMax - Config.CastAngleMin))
-        Net["RF/RequestFishingMinigameStarted"]:InvokeServer(angle, Config.CastPower, os.clock())
-        
-        -- 3. Wait (minimum)
-        task.wait(0.25)
-        
-        -- 4. Complete
-        Net["RE/FishingCompleted"]:FireServer()
-        task.wait(0.03)
-        Net["RE/FishingCompleted"]:FireServer()
-        
-        Stats.FishCaught = Stats.FishCaught + 1
-    end)
-    if not success then warn("[Turbo] Error:", err) end
-end
-
-local function StartBlatantFishingLoop()
-    while Config.BlatantFishingEnabled do
-        BlatantFishingActive = true
-        ExecuteBlatantFishing()
-        if Config.AutoSell and Stats.FishCaught > 0 and Stats.FishCaught % Config.AutoSellThreshold == 0 then 
-            pcall(SellAllFish) 
-        end
-        BlatantFishingActive = false
-        task.wait(0.01)
-    end
-    BlatantFishingActive = false
+    FishingActive = false
 end
 
 -- ================================
@@ -686,8 +581,8 @@ ScreenGui.IgnoreGuiInset = true
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 700, 0, 480)
-MainFrame.Position = UDim2.new(0.5, -350, 0.5, -240)
+MainFrame.Size = UDim2.new(0, 450, 0, 320)
+MainFrame.Position = UDim2.new(0.5, -225, 0.5, -160)
 MainFrame.BackgroundColor3 = Theme.BgDark
 MainFrame.BackgroundTransparency = 0.05
 MainFrame.BorderSizePixel = 0
@@ -695,7 +590,7 @@ MainFrame.Active = true
 MainFrame.Draggable = true
 MainFrame.ClipsDescendants = true
 MainFrame.Parent = ScreenGui
-Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 16)
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
 
 local MainStroke = Instance.new("UIStroke", MainFrame)
 MainStroke.Color = Theme.Primary
@@ -715,8 +610,8 @@ GlowEffect.SliceCenter = Rect.new(49, 49, 450, 450)
 GlowEffect.ZIndex = 0
 
 -- Resize Handles
-local MIN_SIZE = Vector2.new(500, 350)
-local MAX_SIZE = Vector2.new(1200, 800)
+local MIN_SIZE = Vector2.new(350, 280)
+local MAX_SIZE = Vector2.new(800, 500)
 
 local function CreateResizeHandle(name, size, position, cursor)
     local handle = Instance.new("TextButton", MainFrame)
@@ -828,11 +723,11 @@ SetupResize(ResizeTop, false, true, false, false)
 -- Sidebar
 local Sidebar = Instance.new("Frame", MainFrame)
 Sidebar.Name = "Sidebar"
-Sidebar.Size = UDim2.new(0, 180, 1, 0)
+Sidebar.Size = UDim2.new(0, 140, 1, 0)
 Sidebar.BackgroundColor3 = Theme.BgSidebar
 Sidebar.BorderSizePixel = 0
 Sidebar.ZIndex = 2
-Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 16)
+Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 12)
 
 local SidebarInner = Instance.new("Frame", Sidebar)
 SidebarInner.Size = UDim2.new(1, 0, 1, 0)
@@ -849,36 +744,36 @@ SidebarCornerFix.ZIndex = 2
 
 -- Logo
 local LogoContainer = Instance.new("Frame", Sidebar)
-LogoContainer.Size = UDim2.new(1, 0, 0, 70)
+LogoContainer.Size = UDim2.new(1, 0, 0, 50)
 LogoContainer.BackgroundTransparency = 1
 LogoContainer.ZIndex = 3
 
 local LogoText = Instance.new("TextLabel", LogoContainer)
-LogoText.Size = UDim2.new(1, -20, 0, 30)
-LogoText.Position = UDim2.new(0, 15, 0, 15)
+LogoText.Size = UDim2.new(1, -10, 0, 22)
+LogoText.Position = UDim2.new(0, 8, 0, 8)
 LogoText.BackgroundTransparency = 1
 LogoText.Text = "DanuHub"
 LogoText.TextColor3 = Theme.TextPrimary
-LogoText.TextSize = 20
+LogoText.TextSize = 14
 LogoText.Font = Enum.Font.GothamBlack
 LogoText.TextXAlignment = Enum.TextXAlignment.Left
 LogoText.ZIndex = 4
 
 local LogoSub = Instance.new("TextLabel", LogoContainer)
-LogoSub.Size = UDim2.new(1, -20, 0, 16)
-LogoSub.Position = UDim2.new(0, 15, 0, 42)
+LogoSub.Size = UDim2.new(1, -10, 0, 12)
+LogoSub.Position = UDim2.new(0, 8, 0, 30)
 LogoSub.BackgroundTransparency = 1
 LogoSub.Text = "Premium v1.0.1"
 LogoSub.TextColor3 = Theme.Neon
-LogoSub.TextSize = 11
+LogoSub.TextSize = 9
 LogoSub.Font = Enum.Font.GothamMedium
 LogoSub.TextXAlignment = Enum.TextXAlignment.Left
 LogoSub.ZIndex = 4
 
 -- Menu Items Container
 local MenuContainer = Instance.new("ScrollingFrame", Sidebar)
-MenuContainer.Size = UDim2.new(1, -20, 1, -160)
-MenuContainer.Position = UDim2.new(0, 10, 0, 75)
+MenuContainer.Size = UDim2.new(1, -10, 1, -100)
+MenuContainer.Position = UDim2.new(0, 5, 0, 55)
 MenuContainer.BackgroundTransparency = 1
 MenuContainer.ScrollBarThickness = 0
 MenuContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -894,12 +789,10 @@ local MenuItems = {
     {name = "Server List", icon = "rbxassetid://7734053495", page = "ServerList", isMain = true, order = 2},
     {name = "All Menu Here", icon = "rbxassetid://7733717447", page = nil, isMain = true, isExpander = true, order = 3},
     {name = "  Auto Fishing", icon = "rbxassetid://7733692590", page = "AutoFishing", isMain = false, parent = "All Menu Here", order = 4},
-    {name = "  Ultra Fishing", icon = "rbxassetid://7733756006", page = "UltraFishing", isMain = false, parent = "All Menu Here", order = 5},
-    {name = "  Blatant Fishing", icon = "rbxassetid://7733756006", page = "BlatantFishing", isMain = false, parent = "All Menu Here", order = 6},
-    {name = "  Auto Favorite", icon = "rbxassetid://7733964053", page = "AutoFavorite", isMain = false, parent = "All Menu Here", order = 7},
-    {name = "  Weather Event", icon = "rbxassetid://7734053495", page = "Weather", isMain = false, parent = "All Menu Here", order = 8},
-    {name = "  Cheat Menu", icon = "rbxassetid://7733717447", page = "AllMenu", isMain = false, parent = "All Menu Here", order = 9},
-    {name = "  Performance", icon = "rbxassetid://7743878857", page = "Performance", isMain = false, parent = "All Menu Here", order = 10},
+    {name = "  Auto Favorite", icon = "rbxassetid://7733964053", page = "AutoFavorite", isMain = false, parent = "All Menu Here", order = 5},
+    {name = "  Weather Event", icon = "rbxassetid://7734053495", page = "Weather", isMain = false, parent = "All Menu Here", order = 6},
+    {name = "  Cheat Menu", icon = "rbxassetid://7733717447", page = "AllMenu", isMain = false, parent = "All Menu Here", order = 7},
+    {name = "  Performance", icon = "rbxassetid://7743878857", page = "Performance", isMain = false, parent = "All Menu Here", order = 8},
 }
 
 local MenuButtons = {}
@@ -911,30 +804,30 @@ local SubMenuExpanded = false
 local function CreateMenuButton(data, index)
     local btn = Instance.new("TextButton", MenuContainer)
     btn.Name = data.name
-    btn.Size = UDim2.new(1, 0, 0, 42)
+    btn.Size = UDim2.new(1, 0, 0, 32)
     btn.BackgroundColor3 = (data.page == "DevInfo") and Theme.Primary or Theme.BgLight
     btn.BackgroundTransparency = (data.page == "DevInfo") and 0 or 0.5
     btn.Text = ""
     btn.LayoutOrder = data.order or index
     btn.ZIndex = 4
     btn.Visible = data.isMain or false
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
     
     local iconLabel = Instance.new("ImageLabel", btn)
-    iconLabel.Size = UDim2.new(0, 20, 0, 20)
-    iconLabel.Position = UDim2.new(0, 12, 0.5, -10)
+    iconLabel.Size = UDim2.new(0, 16, 0, 16)
+    iconLabel.Position = UDim2.new(0, 8, 0.5, -8)
     iconLabel.BackgroundTransparency = 1
     iconLabel.Image = data.icon
     iconLabel.ImageColor3 = Theme.TextPrimary
     iconLabel.ZIndex = 5
     
     local textLabel = Instance.new("TextLabel", btn)
-    textLabel.Size = UDim2.new(1, -50, 1, 0)
-    textLabel.Position = UDim2.new(0, 40, 0, 0)
+    textLabel.Size = UDim2.new(1, -35, 1, 0)
+    textLabel.Position = UDim2.new(0, 28, 0, 0)
     textLabel.BackgroundTransparency = 1
     textLabel.Text = data.name
     textLabel.TextColor3 = Theme.TextPrimary
-    textLabel.TextSize = 12
+    textLabel.TextSize = 10
     textLabel.Font = Enum.Font.GothamMedium
     textLabel.TextXAlignment = Enum.TextXAlignment.Left
     textLabel.ZIndex = 5
@@ -1006,16 +899,16 @@ end
 
 -- User Profile at bottom
 local ProfileContainer = Instance.new("Frame", Sidebar)
-ProfileContainer.Size = UDim2.new(1, -20, 0, 60)
-ProfileContainer.Position = UDim2.new(0, 10, 1, -70)
+ProfileContainer.Size = UDim2.new(1, -10, 0, 40)
+ProfileContainer.Position = UDim2.new(0, 5, 1, -45)
 ProfileContainer.BackgroundColor3 = Theme.BgLight
 ProfileContainer.BackgroundTransparency = 0.5
 ProfileContainer.ZIndex = 3
-Instance.new("UICorner", ProfileContainer).CornerRadius = UDim.new(0, 10)
+Instance.new("UICorner", ProfileContainer).CornerRadius = UDim.new(0, 8)
 
 local ProfileImage = Instance.new("ImageLabel", ProfileContainer)
-ProfileImage.Size = UDim2.new(0, 40, 0, 40)
-ProfileImage.Position = UDim2.new(0, 10, 0.5, -20)
+ProfileImage.Size = UDim2.new(0, 28, 0, 28)
+ProfileImage.Position = UDim2.new(0, 6, 0.5, -14)
 ProfileImage.BackgroundColor3 = Theme.Primary
 ProfileImage.ZIndex = 4
 Instance.new("UICorner", ProfileImage).CornerRadius = UDim.new(1, 0)
@@ -1029,24 +922,24 @@ pcall(function()
 end)
 
 local ProfileName = Instance.new("TextLabel", ProfileContainer)
-ProfileName.Size = UDim2.new(1, -65, 0, 20)
-ProfileName.Position = UDim2.new(0, 58, 0, 12)
+ProfileName.Size = UDim2.new(1, -45, 0, 16)
+ProfileName.Position = UDim2.new(0, 38, 0, 5)
 ProfileName.BackgroundTransparency = 1
 ProfileName.Text = Player.Name
 ProfileName.TextColor3 = Theme.TextPrimary
-ProfileName.TextSize = 12
+ProfileName.TextSize = 9
 ProfileName.Font = Enum.Font.GothamBold
 ProfileName.TextXAlignment = Enum.TextXAlignment.Left
 ProfileName.TextTruncate = Enum.TextTruncate.AtEnd
 ProfileName.ZIndex = 4
 
 local ProfileStatus = Instance.new("TextLabel", ProfileContainer)
-ProfileStatus.Size = UDim2.new(1, -65, 0, 14)
-ProfileStatus.Position = UDim2.new(0, 58, 0, 32)
+ProfileStatus.Size = UDim2.new(1, -45, 0, 12)
+ProfileStatus.Position = UDim2.new(0, 38, 0, 22)
 ProfileStatus.BackgroundTransparency = 1
-ProfileStatus.Text = "Premium User"
+ProfileStatus.Text = "Premium"
 ProfileStatus.TextColor3 = Theme.Neon
-ProfileStatus.TextSize = 10
+ProfileStatus.TextSize = 8
 ProfileStatus.Font = Enum.Font.Gotham
 ProfileStatus.TextXAlignment = Enum.TextXAlignment.Left
 ProfileStatus.ZIndex = 4
@@ -1054,56 +947,56 @@ ProfileStatus.ZIndex = 4
 -- Content Area
 local ContentArea = Instance.new("Frame", MainFrame)
 ContentArea.Name = "Content"
-ContentArea.Size = UDim2.new(1, -190, 1, -50)
-ContentArea.Position = UDim2.new(0, 185, 0, 45)
+ContentArea.Size = UDim2.new(1, -150, 1, -40)
+ContentArea.Position = UDim2.new(0, 145, 0, 35)
 ContentArea.BackgroundTransparency = 1
 ContentArea.ZIndex = 2
 
 -- Top Bar
 local TopBar = Instance.new("Frame", MainFrame)
-TopBar.Size = UDim2.new(1, -180, 0, 40)
-TopBar.Position = UDim2.new(0, 180, 0, 0)
+TopBar.Size = UDim2.new(1, -140, 0, 32)
+TopBar.Position = UDim2.new(0, 140, 0, 0)
 TopBar.BackgroundTransparency = 1
 TopBar.ZIndex = 3
 
 local PageTitle = Instance.new("TextLabel", TopBar)
 PageTitle.Size = UDim2.new(0.5, 0, 1, 0)
-PageTitle.Position = UDim2.new(0, 15, 0, 0)
+PageTitle.Position = UDim2.new(0, 10, 0, 0)
 PageTitle.BackgroundTransparency = 1
 PageTitle.Text = "Developer Info"
 PageTitle.TextColor3 = Theme.TextPrimary
-PageTitle.TextSize = 16
+PageTitle.TextSize = 12
 PageTitle.Font = Enum.Font.GothamBold
 PageTitle.TextXAlignment = Enum.TextXAlignment.Left
 PageTitle.ZIndex = 4
 
 -- Window Controls
 local ControlsContainer = Instance.new("Frame", TopBar)
-ControlsContainer.Size = UDim2.new(0, 90, 0, 30)
-ControlsContainer.Position = UDim2.new(1, -100, 0.5, -15)
+ControlsContainer.Size = UDim2.new(0, 70, 0, 24)
+ControlsContainer.Position = UDim2.new(1, -75, 0.5, -12)
 ControlsContainer.BackgroundTransparency = 1
 ControlsContainer.ZIndex = 4
 
 local function CreateControlBtn(name, text, pos, color)
     local btn = Instance.new("TextButton", ControlsContainer)
     btn.Name = name
-    btn.Size = UDim2.new(0, 26, 0, 26)
+    btn.Size = UDim2.new(0, 20, 0, 20)
     btn.Position = pos
     btn.BackgroundColor3 = color
     btn.BackgroundTransparency = 0.3
     btn.Text = text
     btn.TextColor3 = Theme.TextPrimary
-    btn.TextSize = 12
+    btn.TextSize = 10
     btn.Font = Enum.Font.GothamBold
     btn.ZIndex = 5
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
     AddHoverEffect(btn, color, Color3.new(math.min(color.R * 1.3, 1), math.min(color.G * 1.3, 1), math.min(color.B * 1.3, 1)))
     return btn
 end
 
 local MinBtn = CreateControlBtn("Min", "-", UDim2.new(0, 0, 0, 0), Theme.Warning)
-local MaxBtn = CreateControlBtn("Max", "+", UDim2.new(0, 32, 0, 0), Theme.Success)
-local CloseBtn = CreateControlBtn("Close", "X", UDim2.new(0, 64, 0, 0), Theme.Danger)
+local MaxBtn = CreateControlBtn("Max", "+", UDim2.new(0, 24, 0, 0), Theme.Success)
+local CloseBtn = CreateControlBtn("Close", "X", UDim2.new(0, 48, 0, 0), Theme.Danger)
 
 -- Page Creation Function
 local function CreatePage(name)
@@ -1698,26 +1591,11 @@ CreateSection(AutoFishingPage, "Auto Fishing Controls", 1)
 local FishingButtons = {}
 
 local function StopAllFishing()
-    -- Stop Auto Fishing
     Config.BlatantMode = false
     FishingActive = false
     if FishingButtons.Auto then
         FishingButtons.Auto.Text = "START AUTO FISHING"
         FishingButtons.Auto.BackgroundColor3 = Theme.Success
-    end
-    -- Stop Ultra Fishing
-    Config.UltraFishingEnabled = false
-    UltraFishingActive = false
-    if FishingButtons.Ultra then
-        FishingButtons.Ultra.Text = "START ULTRA FISHING"
-        FishingButtons.Ultra.BackgroundColor3 = Theme.Neon
-    end
-    -- Stop Blatant Fishing
-    Config.BlatantFishingEnabled = false
-    BlatantFishingActive = false
-    if FishingButtons.Blatant then
-        FishingButtons.Blatant.Text = "START BLATANT FISHING"
-        FishingButtons.Blatant.BackgroundColor3 = Theme.Warning
     end
 end
 
@@ -1738,7 +1616,7 @@ FishingButtons.Auto = startFishingBtn
 
 startFishingBtn.MouseButton1Click:Connect(function()
     local wasActive = Config.BlatantMode
-    StopAllFishing() -- Stop all other fishing modes
+    StopAllFishing()
     
     if not wasActive then
         Config.BlatantMode = true
@@ -1746,7 +1624,7 @@ startFishingBtn.MouseButton1Click:Connect(function()
         startFishingBtn.BackgroundColor3 = Theme.Danger
         Stats.StartTime = os.clock()
         Stats.FishCaught, Stats.TotalSold = 0, 0
-        task.spawn(StartBlatantLoop)
+        task.spawn(StartAutoFishingLoop)
     end
 end)
 
@@ -1762,139 +1640,6 @@ CreateSlider(AutoFishingPage, "Reel Delay", "0.1", 0, 10, "ReelDelay", 9)
 CreateSlider(AutoFishingPage, "Fish Delay", "0.2", 0, 10, "FishingDelay", 10)
 CreateSlider(AutoFishingPage, "Cast Amount", "3", 1, 10, "CastAmount", 11)
 CreateSlider(AutoFishingPage, "Cast Power", "0.55", 0, 1, "CastPower", 12)
-
--- Ultra Fishing Page
-local UltraFishingPage = CreatePage("UltraFishing")
-
-CreateSection(UltraFishingPage, "Ultra Speed Settings", 1)
-
-local startUltraBtn = Instance.new("TextButton", UltraFishingPage)
-startUltraBtn.Name = "StartUltra"
-startUltraBtn.Size = UDim2.new(1, 0, 0, 50)
-startUltraBtn.BackgroundColor3 = Theme.Neon
-startUltraBtn.Text = "START ULTRA FISHING"
-startUltraBtn.TextColor3 = Theme.TextPrimary
-startUltraBtn.TextSize = 16
-startUltraBtn.Font = Enum.Font.GothamBold
-startUltraBtn.LayoutOrder = 2
-startUltraBtn.ZIndex = 5
-startUltraBtn.AutoButtonColor = true
-Instance.new("UICorner", startUltraBtn).CornerRadius = UDim.new(0, 10)
-
-FishingButtons.Ultra = startUltraBtn
-
-startUltraBtn.MouseButton1Click:Connect(function()
-    local wasActive = Config.UltraFishingEnabled
-    StopAllFishing() -- Stop all other fishing modes
-    
-    if not wasActive then
-        Config.UltraFishingEnabled = true
-        startUltraBtn.Text = "STOP ULTRA FISHING"
-        startUltraBtn.BackgroundColor3 = Theme.Danger
-        Stats.StartTime = os.clock()
-        Stats.FishCaught, Stats.TotalSold = 0, 0
-        task.spawn(StartUltraFishingLoop)
-    end
-end)
-
-CreateSlider(UltraFishingPage, "Delay Recast", "1.20", 0, 3, "UltraDelayRecast", 3)
-CreateSlider(UltraFishingPage, "Spam Finish", "10", 1, 100, "UltraSpamFinish", 4)
-CreateSlider(UltraFishingPage, "Cooldown Recast", "0.01", 0, 1, "UltraCooldownRecast", 5)
-
-CreateSection(UltraFishingPage, "Ultra Options", 6)
-CreateToggle(UltraFishingPage, "Auto Sell", "AutoSell", 7)
-CreateSlider(UltraFishingPage, "Sell Every (fish)", "50", 10, 200, "AutoSellThreshold", 8)
-
-CreateSection(UltraFishingPage, "Information", 9)
-
-local ultraInfoCard = Instance.new("Frame", UltraFishingPage)
-ultraInfoCard.Size = UDim2.new(1, 0, 0, 80)
-ultraInfoCard.BackgroundColor3 = Theme.BgLight
-ultraInfoCard.BackgroundTransparency = 0.3
-ultraInfoCard.LayoutOrder = 10
-ultraInfoCard.ZIndex = 4
-Instance.new("UICorner", ultraInfoCard).CornerRadius = UDim.new(0, 10)
-
-local ultraInfoText = Instance.new("TextLabel", ultraInfoCard)
-ultraInfoText.Size = UDim2.new(1, -20, 1, -20)
-ultraInfoText.Position = UDim2.new(0, 10, 0, 10)
-ultraInfoText.BackgroundTransparency = 1
-ultraInfoText.Text = "Ultra Fishing uses aggressive spam techniques for maximum speed. Adjust Delay Recast for cast timing, Spam Finish for completion speed, and Cooldown for cycle timing."
-ultraInfoText.TextColor3 = Theme.TextSecondary
-ultraInfoText.TextSize = 11
-ultraInfoText.Font = Enum.Font.Gotham
-ultraInfoText.TextWrapped = true
-ultraInfoText.TextXAlignment = Enum.TextXAlignment.Left
-ultraInfoText.TextYAlignment = Enum.TextYAlignment.Top
-ultraInfoText.ZIndex = 5
-
--- Blatant Fishing Page
-local BlatantFishingPage = CreatePage("BlatantFishing")
-
-CreateSection(BlatantFishingPage, "Blatant Fishing Controls", 1)
-
-local startBlatantBtn = Instance.new("TextButton", BlatantFishingPage)
-startBlatantBtn.Name = "StartBlatant"
-startBlatantBtn.Size = UDim2.new(1, 0, 0, 50)
-startBlatantBtn.BackgroundColor3 = Theme.Warning
-startBlatantBtn.Text = "START BLATANT FISHING"
-startBlatantBtn.TextColor3 = Theme.TextPrimary
-startBlatantBtn.TextSize = 16
-startBlatantBtn.Font = Enum.Font.GothamBold
-startBlatantBtn.LayoutOrder = 2
-startBlatantBtn.ZIndex = 5
-startBlatantBtn.AutoButtonColor = true
-Instance.new("UICorner", startBlatantBtn).CornerRadius = UDim.new(0, 10)
-
-FishingButtons.Blatant = startBlatantBtn
-
-startBlatantBtn.MouseButton1Click:Connect(function()
-    local wasActive = Config.BlatantFishingEnabled
-    StopAllFishing() -- Stop all other fishing modes
-    
-    if not wasActive then
-        Config.BlatantFishingEnabled = true
-        startBlatantBtn.Text = "STOP BLATANT FISHING"
-        startBlatantBtn.BackgroundColor3 = Theme.Danger
-        Stats.StartTime = os.clock()
-        Stats.FishCaught, Stats.TotalSold = 0, 0
-        task.spawn(StartBlatantFishingLoop)
-    end
-end)
-
-CreateSection(BlatantFishingPage, "Blatant Settings", 3)
-CreateSlider(BlatantFishingPage, "Delay Cast", "0.1", 0, 10, "BlatantDelayCast", 4)
-CreateSlider(BlatantFishingPage, "Delay Complete", "0.05", 0, 10, "BlatantDelayComplete", 5)
-
-CreateSection(BlatantFishingPage, "Options", 6)
-CreateToggle(BlatantFishingPage, "Auto Sell", "AutoSell", 7)
-CreateToggle(BlatantFishingPage, "Auto Catch (Detect Bite)", "AutoCatchEnabled", 8, function(enabled)
-    if enabled then AutoCatchController:Enable() else AutoCatchController:Disable() end
-end)
-CreateSlider(BlatantFishingPage, "Sell Every (fish)", "50", 10, 200, "AutoSellThreshold", 9)
-
-CreateSection(BlatantFishingPage, "Information", 10)
-
-local blatantInfoCard = Instance.new("Frame", BlatantFishingPage)
-blatantInfoCard.Size = UDim2.new(1, 0, 0, 100)
-blatantInfoCard.BackgroundColor3 = Theme.BgLight
-blatantInfoCard.BackgroundTransparency = 0.3
-blatantInfoCard.LayoutOrder = 11
-blatantInfoCard.ZIndex = 4
-Instance.new("UICorner", blatantInfoCard).CornerRadius = UDim.new(0, 10)
-
-local blatantInfoText = Instance.new("TextLabel", blatantInfoCard)
-blatantInfoText.Size = UDim2.new(1, -20, 1, -20)
-blatantInfoText.Position = UDim2.new(0, 10, 0, 10)
-blatantInfoText.BackgroundTransparency = 1
-blatantInfoText.Text = "Blatant Fishing uses minimal delays for maximum speed.\n\n- Auto Catch: Detects fish bite and auto-completes\n- Lower delay values = faster fishing"
-blatantInfoText.TextColor3 = Theme.TextSecondary
-blatantInfoText.TextSize = 11
-blatantInfoText.Font = Enum.Font.Gotham
-blatantInfoText.TextWrapped = true
-blatantInfoText.TextXAlignment = Enum.TextXAlignment.Left
-blatantInfoText.TextYAlignment = Enum.TextYAlignment.Top
-blatantInfoText.ZIndex = 5
 
 -- Auto Favorite Page
 local AutoFavoritePage = CreatePage("AutoFavorite")
@@ -2114,20 +1859,20 @@ perfInfoText.ZIndex = 5
 
 -- Stats Bar at Bottom
 local StatsBar = Instance.new("Frame", MainFrame)
-StatsBar.Size = UDim2.new(1, -190, 0, 35)
-StatsBar.Position = UDim2.new(0, 185, 1, -40)
+StatsBar.Size = UDim2.new(1, -150, 0, 28)
+StatsBar.Position = UDim2.new(0, 145, 1, -32)
 StatsBar.BackgroundColor3 = Theme.BgCard
 StatsBar.BackgroundTransparency = 0.5
 StatsBar.ZIndex = 3
-Instance.new("UICorner", StatsBar).CornerRadius = UDim.new(0, 8)
+Instance.new("UICorner", StatsBar).CornerRadius = UDim.new(0, 6)
 
 local StatsText = Instance.new("TextLabel", StatsBar)
 StatsText.Size = UDim2.new(1, -20, 1, 0)
-StatsText.Position = UDim2.new(0, 10, 0, 0)
+StatsText.Position = UDim2.new(0, 8, 0, 0)
 StatsText.BackgroundTransparency = 1
-StatsText.Text = "Fish: 0 | Sold: 0 | Favorites: 0 | 0/min"
+StatsText.Text = "Fish: 0 | Sold: 0 | 0/min"
 StatsText.TextColor3 = Theme.TextSecondary
-StatsText.TextSize = 11
+StatsText.TextSize = 9
 StatsText.Font = Enum.Font.GothamMedium
 StatsText.TextXAlignment = Enum.TextXAlignment.Left
 StatsText.ZIndex = 4
@@ -2147,13 +1892,13 @@ MinBtn.MouseButton1Click:Connect(function()
     isMinimized = not isMinimized
     if isMinimized then
         savedSize = MainFrame.Size
-        CreateTween(MainFrame, {Size = UDim2.new(0, 180, 0, 70)}, 0.3):Play()
+        CreateTween(MainFrame, {Size = UDim2.new(0, 140, 0, 55)}, 0.3):Play()
         ContentArea.Visible = false
         StatsBar.Visible = false
         MenuContainer.Visible = false
         ProfileContainer.Visible = false
     else
-        CreateTween(MainFrame, {Size = savedSize or UDim2.new(0, 700, 0, 480)}, 0.3):Play()
+        CreateTween(MainFrame, {Size = savedSize or UDim2.new(0, 450, 0, 320)}, 0.3):Play()
         task.wait(0.3)
         ContentArea.Visible = true
         StatsBar.Visible = true
@@ -2167,19 +1912,15 @@ local isMaximized = false
 MaxBtn.MouseButton1Click:Connect(function()
     isMaximized = not isMaximized
     if isMaximized then
-        CreateTween(MainFrame, {Size = UDim2.new(0, 900, 0, 600), Position = UDim2.new(0.5, -450, 0.5, -300)}, 0.3):Play()
+        CreateTween(MainFrame, {Size = UDim2.new(0, 600, 0, 420), Position = UDim2.new(0.5, -300, 0.5, -210)}, 0.3):Play()
     else
-        CreateTween(MainFrame, {Size = UDim2.new(0, 700, 0, 480), Position = UDim2.new(0.5, -350, 0.5, -240)}, 0.3):Play()
+        CreateTween(MainFrame, {Size = UDim2.new(0, 450, 0, 320), Position = UDim2.new(0.5, -225, 0.5, -160)}, 0.3):Play()
     end
 end)
 
 CloseBtn.MouseButton1Click:Connect(function()
     Config.BlatantMode = false
-    Config.UltraFishingEnabled = false
-    Config.BlatantFishingEnabled = false
     FishingActive = false
-    UltraFishingActive = false
-    BlatantFishingActive = false
     if Config.NoAnimation then AnimationController:Enable() end
     if Config.FlyEnabled then FlyController:Disable() end
     if Config.SpeedEnabled then Config.SpeedEnabled = false updateSpeed() end
@@ -2203,9 +1944,9 @@ task.spawn(function()
         task.wait(0.5)
         local rt = os.clock() - Stats.StartTime
         local cpm = rt > 0 and (Stats.FishCaught / rt) * 60 or 0
-        StatsText.Text = string.format("Fish: %d | Sold: %d | Favorites: %d | %.1f/min", Stats.FishCaught, Stats.TotalSold, Stats.FavoriteCount, cpm)
+        StatsText.Text = string.format("Fish: %d | Sold: %d | %.1f/min", Stats.FishCaught, Stats.TotalSold, cpm)
         
-        if Config.BlatantMode or Config.UltraFishingEnabled or Config.BlatantFishingEnabled then
+        if Config.BlatantMode then
             StatusIndicator.BackgroundColor3 = Theme.Success
         else
             StatusIndicator.BackgroundColor3 = Theme.TextMuted
@@ -2219,11 +1960,7 @@ task.spawn(function()
     if char:FindFirstChild("Humanoid") then
         char.Humanoid.Died:Connect(function()
             Config.BlatantMode = false
-            Config.UltraFishingEnabled = false
-            Config.BlatantFishingEnabled = false
             FishingActive = false
-            UltraFishingActive = false
-            BlatantFishingActive = false
         end)
     end
 end)
@@ -2241,6 +1978,6 @@ MainFrame.Size = UDim2.new(0, 0, 0, 0)
 MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 task.wait(0.1)
 CreateTween(MainFrame, {
-    Size = UDim2.new(0, 700, 0, 480),
-    Position = UDim2.new(0.5, -350, 0.5, -240)
+    Size = UDim2.new(0, 450, 0, 320),
+    Position = UDim2.new(0.5, -225, 0.5, -160)
 }, 0.5, Enum.EasingStyle.Back):Play()
